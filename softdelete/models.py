@@ -240,9 +240,9 @@ class SoftDeleteObject(models.Model):
             ]
 
             for x in all_related:
-                if hasattr(x, 'bulk_related_objects') or x.on_delete.__name__ not in ['DO_NOTHING', 'SET_NULL']:
+                if hasattr(x, 'bulk_related_objects') or (x.on_delete.__name__ not in ['DO_NOTHING', 'SET_NULL']):
                     self._do_delete(cs, x)
-                if hasattr(x, 'on_delete') and x.on_delete.__name__ == 'SET_NULL':
+                elif x.on_delete.__name__ == 'SET_NULL':
                     rel = x.get_accessor_name()
                     getattr(self, rel).all().update(**{x.remote_field.name: None})
             logging.debug("FINISHED SOFT DELETING RELATED %s", self)
