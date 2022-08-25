@@ -180,6 +180,8 @@ class SoftDeleteObject(models.Model):
                 getattr(self, rel).delete(changeset=changeset)
             else:
                 getattr(self, rel).all().delete(changeset=changeset)
+        except django.core.exceptions.FieldError as e:
+            raise e
         except:
             try:
                 getattr(self, rel).all().delete()
