@@ -123,16 +123,10 @@ class SoftDeleteManager(models.Manager):
         return qs
 
     def get(self, *args, **kwargs):
-        if 'pk' in kwargs:
-            return self.all_with_deleted().get(*args, **kwargs)
-        else:
             return self._get_self_queryset().get(*args, **kwargs)
 
     def filter(self, *args, **kwargs):
-        if 'pk' in kwargs:
-            qs = self.all_with_deleted().filter(*args, **kwargs)
-        else:
-            qs = self._get_self_queryset().filter(*args, **kwargs)
+        qs = self._get_self_queryset().filter(*args, **kwargs)
         if not issubclass(qs.__class__, SoftDeleteQuerySet):
             qs.__class__ = SoftDeleteQuerySet
         return qs
@@ -170,7 +164,12 @@ class SoftDeleteObject(models.Model):
     deleted = property(get_deleted, set_deleted)
 
     def _do_delete(self, changeset, related):
-        rel = related.get_accessor_name()
+        get_rel_name = getattr(related, 'get_accessor_name', getattr(related, 'get_attname', ''))
+
+        if not callable(get_rel_name):
+            return
+
+        rel = get_rel_name()
 
         # Sometimes there is nothing to delete
         if not hasattr(self, rel):
@@ -181,6 +180,8 @@ class SoftDeleteObject(models.Model):
                 getattr(self, rel).delete(changeset=changeset)
             else:
                 getattr(self, rel).all().delete(changeset=changeset)
+        except django.core.exceptions.FieldError as e:
+            raise e
         except:
             try:
                 getattr(self, rel).all().delete()
@@ -237,13 +238,13 @@ class SoftDeleteObject(models.Model):
             all_related = [
                 f for f in self._meta.get_fields()
                 if (f.one_to_many or f.one_to_one)
-                   and f.auto_created and not f.concrete
+                   and (f.auto_created or hasattr(f, 'bulk_related_objects')) and not f.concrete
             ]
 
             for x in all_related:
-                if x.on_delete.__name__ not in ['DO_NOTHING', 'SET_NULL']:
+                if hasattr(x, 'bulk_related_objects') or (x.on_delete.__name__ not in ['DO_NOTHING', 'SET_NULL']):
                     self._do_delete(cs, x)
-                if x.on_delete.__name__ == 'SET_NULL':
+                elif x.on_delete.__name__ == 'SET_NULL':
                     rel = x.get_accessor_name()
                     getattr(self, rel).all().update(**{x.remote_field.name: None})
             logging.debug("FINISHED SOFT DELETING RELATED %s", self)
